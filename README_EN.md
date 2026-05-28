@@ -115,6 +115,24 @@ Initial Phase 1 support includes:
 - LoRA loader file names and strengths are extracted separately for settings; LoRA trigger words remain in the prompt if they entered the text chain.
 - The parser does not perform content moderation, prompt optimization, or token deletion.
 
+## LLM / ShowText Cache Notes
+
+For Gemini / OpenAI / ChatGPT / Claude / LLM prompt-generation workflows, the plugin can only recover runtime results that were written into metadata and are on the final selected sampler/generator `positive` / `negative` chain.
+
+Recoverable:
+
+- `ShowText|pysssss` cache on the final chain, such as `inputs.text_0` in prompt JSON or `widgets_values[0]` on the same node id in workflow JSON.
+- Recursive `SmartMetadataReader` positive / negative output results on the final chain.
+- `StringFunction`, text concatenation, `ConditioningCombine`, and `ConditioningConcat` branch results on the final chain.
+
+Not recoverable:
+
+- Runtime LLM output that exists only inside an LLM runtime node and was not embedded into `ShowText` cache.
+- `ShowText` caches from other workflow branches that are not connected to the final selected generator, even if they look like prompts.
+- Gemini / OpenAI node `prompt`, `system_instruction`, `system_prompt`, `messages`, templates, or API parameters.
+
+In these cases the node returns `PARTIAL` / unresolved. This avoids reading stale branches, fallback branches, UI-only display branches, or LLM instruction templates as final prompts.
+
 ## Verified Scenarios
 
 Phase 1 real-world validation and regression tests cover:

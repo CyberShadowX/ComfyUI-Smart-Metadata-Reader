@@ -4,6 +4,13 @@ from .base import TextResolutionContext
 from ..models import NodeRecord, PromptSegment
 
 
+MISSING_LLM_SHOWTEXT_CACHE_REASON = (
+    "ShowText cache missing on final chain; upstream LLM runtime output was not "
+    "embedded in metadata. Other ShowText caches outside the final chain are "
+    "ignored to avoid prompt pollution."
+)
+
+
 class StringFunctionAdapter:
     def matches(self, node: NodeRecord) -> bool:
         return node.class_type == "StringFunction|pysssss"
@@ -86,7 +93,7 @@ class ShowTextAdapter:
                 node=node,
                 field="text",
                 role=role,
-                reason="ShowText cache missing and upstream is LLM runtime output not embedded",
+                reason=MISSING_LLM_SHOWTEXT_CACHE_REASON,
             )
             return []
 

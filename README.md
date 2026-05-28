@@ -115,6 +115,24 @@ Phase 1 初始支持包括：
 - LoRA loader 的文件名和强度会单独进入 setting；但 LoRA trigger words 如果通过文本节点进入 prompt，就会保留在 positive / negative 中。
 - 不做内容审查，不做提示词优化，不删 token。
 
+## LLM / ShowText 缓存说明
+
+对于 Gemini / OpenAI / ChatGPT / Claude / LLM 反推工作流，插件只能恢复已经写入 metadata、并且位于最终 selected sampler/generator `positive` / `negative` 链路上的运行结果。
+
+可以恢复：
+
+- 最终链路上的 `ShowText|pysssss` cache，例如 prompt JSON 的 `inputs.text_0` 或同 node_id workflow JSON 的 `widgets_values[0]`。
+- 最终链路上的 `SmartMetadataReader` positive / negative output 递归结果。
+- 最终链路上的 `StringFunction`、文本拼接、`ConditioningCombine` / `ConditioningConcat` 多分支组合结果。
+
+无法恢复：
+
+- 只存在于 LLM runtime node 内部、但没有写入 `ShowText` cache 的运行结果。
+- workflow 其他未连接分支里的 `ShowText` 缓存，即使它看起来像 prompt。
+- Gemini / OpenAI 节点的 `prompt`、`system_instruction`、`system_prompt`、`messages`、模板或 API 参数。
+
+这种情况下节点会返回 `PARTIAL` / unresolved。这是为了避免误读旧分支、备用分支、UI 展示分支或 LLM 指令模板。
+
 ## 已验证场景
 
 Phase 1 实机和回归测试已覆盖：

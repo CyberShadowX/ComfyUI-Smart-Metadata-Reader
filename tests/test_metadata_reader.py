@@ -718,6 +718,20 @@ def test_showtext_cache_from_llm_chain_is_used_without_reading_llm_template():
     assert "wrong unused prompt" not in result.positive
 
 
+def test_showtext_prompt_text_0_on_final_chain_beats_llm_template():
+    from smart_metadata_reader.metadata_reader import parse_metadata_bundle
+
+    prompt = _llm_showtext_upscale_prompt()
+    prompt["37"]["inputs"]["text_0"] = "cached final chain prompt"
+
+    result = parse_metadata_bundle(_bundle_for_prompt(prompt))
+
+    assert result.positive == "cached final chain prompt"
+    assert "Gemini prompt template" not in result.positive
+    assert "system instruction" not in result.positive
+    assert result.status_message != "FAILED"
+
+
 def test_showtext_cache_compatible_class_from_llm_chain_is_used():
     from smart_metadata_reader.metadata_reader import parse_metadata_bundle
 
@@ -797,8 +811,9 @@ def test_showtext_missing_cache_with_llm_upstream_returns_partial_unresolved():
     assert result.status_message == "PARTIAL"
     assert result.confidence <= 0.6
     assert result.partial_result["unresolved"][0]["class_type"] == "ShowText|pysssss"
-    assert (
-        result.partial_result["unresolved"][0]["reason"]
-        == "ShowText cache missing and upstream is LLM runtime output not embedded"
-    )
+    reason = result.partial_result["unresolved"][0]["reason"]
+    assert "ShowText cache missing on final chain" in reason
+    assert "upstream LLM runtime output was not embedded in metadata" in reason
+    assert "Other ShowText caches outside the final chain are ignored" in reason
+    assert "wrong unused prompt" not in result.positive
     assert "Unresolved:" in result.setting
