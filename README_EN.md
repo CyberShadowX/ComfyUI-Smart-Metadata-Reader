@@ -126,12 +126,18 @@ Phase 1 real-world validation and regression tests cover:
 - `DeepTranslatorTextNode` text source.
 - A1111 / Forge `parameters` fallback.
 - PNG / JPEG / WEBP metadata reading.
+- UltimateSDUpscale / USDU sampler-like metadata parsing.
+- Nested `SmartMetadataReader` output resolution.
+- `CLIPTextEncode.text -> ShowText -> SmartMetadataReader positive/negative output`.
+- JPEG EXIF `UserComment` / Civitai metadata fallback.
 
 ## Current Limitations
 
 - Phase 1 is Python-only. In-node large text boxes and a richer SD Prompt Reader style preview UI are planned for the Phase 2 JavaScript enhancement.
 - Some unknown custom conditioning nodes may return `PARTIAL` / unresolved instead of guessing.
 - If a custom node did not save its generated result into metadata cache, the parser may not be able to recover it.
+- If an upscaled image references its source image, such as `003.png`, and that source image is not present in a resolvable path, the parser returns `PARTIAL` / unresolved; it cannot recover runtime outputs from nowhere.
+- The plugin does not globally scan all `ShowText` / `widgets_values` / `text` fields in the workflow. It only resolves the final selected sampler/generator `positive` / `negative` chain.
 - Images with stripped metadata cannot provide original generation settings.
 
 ## Roadmap

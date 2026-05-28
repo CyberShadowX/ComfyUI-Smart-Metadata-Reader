@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1 - Compatibility fixes
+
+- Added JPEG EXIF UserComment / Civitai metadata fallback
+- Added UltimateSDUpscale / USDU sampler-like generator support
+- Added nested SmartMetadataReader output resolution
+- Improved FAILED / PARTIAL diagnostics
+- Added regression tests for nested reader, Civitai metadata, and USDU workflows
+
 ## 0.1.0 - Initial MVP
 
 - Python-only Smart Metadata Reader node

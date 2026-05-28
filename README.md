@@ -126,12 +126,18 @@ Phase 1 实机和回归测试已覆盖：
 - `DeepTranslatorTextNode` 文本来源。
 - A1111 / Forge `parameters` fallback。
 - PNG / JPEG / WEBP metadata 读取。
+- UltimateSDUpscale / USDU sampler-like metadata parsing。
+- nested `SmartMetadataReader` output resolution。
+- `CLIPTextEncode.text -> ShowText -> SmartMetadataReader positive/negative output`。
+- JPEG EXIF `UserComment` / Civitai metadata fallback。
 
 ## 当前限制
 
 - Phase 1 是 Python-only。节点内部三个大文本框和更像 SD Prompt Reader 的图片预览 UI 留到 Phase 2 JS 前端增强。
 - 部分未知 custom conditioning 节点会返回 `PARTIAL` / unresolved，而不是猜测 prompt。
 - 某些 custom node 的运行结果如果没有写入 metadata 缓存，可能无法还原。
+- 如果放大图引用了原图，例如 `003.png`，但原图不存在于可解析路径中，会返回 `PARTIAL` / unresolved；插件无法凭空恢复运行时输出。
+- 插件不会全局扫描 workflow 中所有 `ShowText` / `widgets_values` / `text` 字段，只解析最终 selected sampler/generator 的 `positive` / `negative` 链路。
 - 被压缩或重新保存后丢失 metadata 的图片无法读取原始生成参数。
 
 ## 后续计划
