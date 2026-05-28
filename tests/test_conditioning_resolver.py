@@ -64,6 +64,75 @@ def test_resolves_controlnet_apply_advanced_passthrough():
     assert segment_texts(resolver.resolve_positive(sampler)) == ["advanced positive"]
 
 
+def test_resolves_cr_apply_controlnet_conditioning_passthrough_without_parameters():
+    prompt = {
+        "1": {"class_type": "KSampler", "inputs": {"positive": ["150", 0]}},
+        "2": {"class_type": "CLIPTextEncode", "inputs": {"text": "real positive prompt"}},
+        "3": {"class_type": "ControlNetLoader", "inputs": {"control_net_name": "control_net"}},
+        "150": {
+            "class_type": "CR Apply ControlNet",
+            "inputs": {
+                "conditioning": ["2", 0],
+                "image": "control_image.png",
+                "strength": 0.3,
+                "control_net": ["3", 0],
+            },
+        },
+    }
+
+    resolver, sampler = resolver_for(prompt)
+    segments = resolver.resolve_positive(sampler)
+    positive = merge_prompt_segments(segments)
+
+    assert positive == "real positive prompt"
+    assert "control_image.png" not in positive
+    assert "0.3" not in positive
+    assert "control_net" not in positive
+    assert "CR Apply ControlNet 150" in resolver.debug_trace
+
+
+def test_resolves_cr_apply_controlnet_complex_upstream_text_chain():
+    prompt = {
+        "1": {"class_type": "KSampler", "inputs": {"positive": ["150", 0]}},
+        "2": {"class_type": "CLIPTextEncode", "inputs": {"text": ["3", 0]}},
+        "3": {
+            "class_type": "StringFunction|pysssss",
+            "inputs": {
+                "action": "append",
+                "text_a": "role_lora_trigger, character_name,",
+                "text_b": ["4", 0],
+                "text_c": ["5", 0],
+            },
+        },
+        "4": {
+            "class_type": "ShowText|pysssss",
+            "inputs": {"text_0": "1girl, solo, stage lights"},
+        },
+        "5": {
+            "class_type": "DeepTranslatorTextNode",
+            "inputs": {"text": "nude, huge breasts"},
+        },
+        "150": {
+            "class_type": "CR Apply ControlNet",
+            "inputs": {
+                "conditioning": ["2", 0],
+                "image": "control_image.png",
+                "strength": 0.3,
+            },
+        },
+    }
+
+    resolver, sampler = resolver_for(prompt)
+    positive = merge_prompt_segments(resolver.resolve_positive(sampler))
+
+    assert "role_lora_trigger" in positive
+    assert "character_name" in positive
+    assert "1girl, solo, stage lights" in positive
+    assert "nude, huge breasts" in positive
+    assert "control_image.png" not in positive
+    assert "0.3" not in positive
+
+
 def test_resolves_inpaint_model_conditioning_passthrough():
     prompt = {
         "1": {"class_type": "KSampler", "inputs": {"positive": ["3", 0]}},
