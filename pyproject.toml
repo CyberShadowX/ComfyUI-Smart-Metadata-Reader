@@ -1,0 +1,10 @@
+[project]
+name = "comfyui-smart-metadata-reader"
+version = "0.1.0"
+description = "ComfyUI image loader node that reads AI image metadata and traces real prompt conditioning."
+requires-python = ">=3.10"
+dependencies = ["Pillow>=10.0.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
