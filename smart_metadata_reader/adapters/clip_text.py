@@ -15,7 +15,9 @@ class CLIPTextEncodeAdapter:
         role: str,
         path: list[str],
         depth: int,
+        output_index: int | None = None,
     ) -> list[PromptSegment]:
+        del output_index
         return context.resolve_input(node, "text", role, path, depth)
 
 
@@ -30,7 +32,9 @@ class CLIPTextEncodeSDXLAdapter:
         role: str,
         path: list[str],
         depth: int,
+        output_index: int | None = None,
     ) -> list[PromptSegment]:
+        del output_index
         segments: list[PromptSegment] = []
         for field in ("text", "text_g", "text_l"):
             if field in node.inputs:

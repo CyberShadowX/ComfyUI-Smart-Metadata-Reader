@@ -366,6 +366,19 @@ def test_smart_metadata_reader_return_contract():
     assert node_cls.CATEGORY
 
 
+def test_smart_metadata_reader_text_output_indices_match_parser_mapping():
+    import nodes
+
+    node_cls = nodes.SmartMetadataReader
+
+    assert node_cls.RETURN_NAMES[0] == "image"
+    assert node_cls.RETURN_NAMES[1] == "mask"
+    assert node_cls.RETURN_NAMES[2] == "positive"
+    assert node_cls.RETURN_NAMES[3] == "negative"
+    assert node_cls.RETURN_TYPES[2] == "STRING"
+    assert node_cls.RETURN_TYPES[3] == "STRING"
+
+
 def test_smart_metadata_reader_method_returns_expected_tuple_order(tmp_path, monkeypatch):
     import nodes
 

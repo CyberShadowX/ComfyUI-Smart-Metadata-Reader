@@ -14,6 +14,107 @@ def _save_jpeg_with_user_comment(path, comment: str, prefix: bytes = b"ASCII\x00
     Image.new("RGB", (32, 24), (20, 40, 60)).save(path, exif=exif)
 
 
+def _save_png_with_prompt(path, prompt, workflow=None):
+    pnginfo = PngInfo()
+    pnginfo.add_text("prompt", json.dumps(prompt))
+    if workflow is not None:
+        pnginfo.add_text("workflow", json.dumps(workflow))
+    Image.new("RGB", (32, 24), (20, 40, 60)).save(path, pnginfo=pnginfo)
+
+
+def _simple_prompt_graph(positive="original positive prompt", negative="original negative prompt"):
+    return {
+        "1": {"class_type": "SaveImage", "inputs": {"images": ["2", 0]}},
+        "2": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0]}},
+        "3": {
+            "class_type": "KSampler",
+            "inputs": {
+                "positive": ["4", 0],
+                "negative": ["5", 0],
+                "seed": 111,
+                "steps": 12,
+                "cfg": 5.5,
+                "sampler_name": "euler",
+                "scheduler": "normal",
+            },
+        },
+        "4": {"class_type": "CLIPTextEncode", "inputs": {"text": positive}},
+        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": negative}},
+    }
+
+
+def _upscale_prompt_graph(reader_image="003.png"):
+    return {
+        "22": {
+            "class_type": "FaceDetailer",
+            "inputs": {
+                "image": ["24", 0],
+                "positive": ["26", 0],
+                "negative": ["27", 0],
+            },
+        },
+        "24": {
+            "class_type": "UltimateSDUpscale",
+            "inputs": {
+                "image": ["40", 0],
+                "positive": ["26", 0],
+                "negative": ["27", 0],
+                "seed": 222,
+                "steps": 9,
+                "cfg": 1.5,
+                "sampler_name": "Euler",
+                "scheduler": "normal",
+                "tile_width": 768,
+                "seam_fix_mode": "half tile",
+            },
+        },
+        "26": {"class_type": "CLIPTextEncode", "inputs": {"text": ["37", 0]}},
+        "27": {"class_type": "CLIPTextEncode", "inputs": {"text": ["38", 0]}},
+        "36": {"class_type": "SmartMetadataReader", "inputs": {"image": reader_image}},
+        "37": {"class_type": "ShowText|pysssss", "inputs": {"text": ["36", 2]}},
+        "38": {"class_type": "ShowText|pysssss", "inputs": {"text": ["36", 3]}},
+        "40": {"class_type": "LoadImage", "inputs": {"image": "source.png"}},
+        "90": {
+            "class_type": "GeminiChatNode",
+            "inputs": {"prompt": "unused Gemini prompt template"},
+        },
+        "91": {"class_type": "ShowText|pysssss", "inputs": {"text": ["90", 0]}},
+        "99": {"class_type": "PreviewImage", "inputs": {"images": ["22", 0]}},
+    }
+
+
+def _upscale_workflow(reader_image="003.png"):
+    return {
+        "nodes": [
+            {
+                "id": 36,
+                "type": "SmartMetadataReader",
+                "inputs": {"image": reader_image},
+                "outputs": [
+                    {"name": "image"},
+                    {"name": "mask"},
+                    {"name": "positive"},
+                    {"name": "negative"},
+                    {"name": "seed"},
+                    {"name": "steps"},
+                    {"name": "cfg"},
+                    {"name": "width"},
+                    {"name": "height"},
+                    {"name": "model_name"},
+                    {"name": "filename"},
+                    {"name": "setting"},
+                ],
+            },
+            {
+                "id": 91,
+                "type": "ShowText|pysssss",
+                "inputs": {"text": ["90", 0]},
+                "widgets_values": ["wrong unused prompt"],
+            },
+        ]
+    }
+
+
 def test_read_metadata_extracts_png_text_chunks_and_dimensions(tmp_path):
     from smart_metadata_reader.metadata_reader import read_metadata
 
@@ -373,3 +474,138 @@ def test_exif_user_comment_civitai_metadata_fallback(tmp_path):
     assert result.partial_result["source_format"] == "EXIF UserComment / Civitai metadata"
     assert result.status_message == "EXIF UserComment / Civitai metadata fallback"
     assert "NO_METADATA" not in result.setting
+
+
+def test_nested_smart_metadata_reader_outputs_resolve_referenced_image_prompts(tmp_path):
+    from smart_metadata_reader.metadata_reader import parse_metadata_bundle, read_metadata
+
+    original_path = tmp_path / "003.png"
+    _save_png_with_prompt(original_path, _simple_prompt_graph())
+
+    upscale_path = tmp_path / "upscaled.png"
+    _save_png_with_prompt(
+        upscale_path,
+        _upscale_prompt_graph(),
+        workflow=_upscale_workflow(),
+    )
+
+    result = parse_metadata_bundle(read_metadata(upscale_path))
+
+    assert result.positive == "original positive prompt"
+    assert result.negative == "original negative prompt"
+    assert result.status_message != "FAILED"
+    assert not (result.status_message == "OK" and result.positive == "" and result.negative == "")
+    assert "Resolved SmartMetadataReader positive output from referenced image 003.png" in result.debug_trace
+    assert "Resolved SmartMetadataReader negative output from referenced image 003.png" in result.debug_trace
+
+
+def test_unconnected_showtext_workflow_cache_does_not_pollute_nested_reader_prompt(tmp_path):
+    from smart_metadata_reader.metadata_reader import parse_metadata_bundle, read_metadata
+
+    original_path = tmp_path / "003.png"
+    _save_png_with_prompt(original_path, _simple_prompt_graph())
+    upscale_path = tmp_path / "upscaled.png"
+    _save_png_with_prompt(
+        upscale_path,
+        _upscale_prompt_graph(),
+        workflow=_upscale_workflow(),
+    )
+
+    result = parse_metadata_bundle(read_metadata(upscale_path))
+
+    assert result.positive == "original positive prompt"
+    assert "wrong unused prompt" not in result.positive
+    assert "wrong unused prompt" not in result.negative
+
+
+def test_nested_smart_metadata_reader_falls_back_to_current_output_contract_without_workflow_outputs(tmp_path):
+    from smart_metadata_reader.metadata_reader import parse_metadata_bundle, read_metadata
+
+    original_path = tmp_path / "003.png"
+    _save_png_with_prompt(original_path, _simple_prompt_graph())
+    upscale_path = tmp_path / "upscaled.png"
+    _save_png_with_prompt(upscale_path, _upscale_prompt_graph())
+
+    result = parse_metadata_bundle(read_metadata(upscale_path))
+
+    assert result.positive == "original positive prompt"
+    assert result.negative == "original negative prompt"
+
+
+def test_nested_smart_metadata_reader_prefers_workflow_output_names_over_indices(tmp_path):
+    from smart_metadata_reader.metadata_reader import parse_metadata_bundle, read_metadata
+
+    original_path = tmp_path / "003.png"
+    _save_png_with_prompt(original_path, _simple_prompt_graph())
+    prompt = _upscale_prompt_graph()
+    prompt["37"]["inputs"]["text"] = ["36", 3]
+    prompt["38"]["inputs"]["text"] = ["36", 2]
+    workflow = _upscale_workflow()
+    workflow["nodes"][0]["outputs"][2] = {"name": "negative"}
+    workflow["nodes"][0]["outputs"][3] = {"name": "positive"}
+    upscale_path = tmp_path / "upscaled.png"
+    _save_png_with_prompt(upscale_path, prompt, workflow=workflow)
+
+    result = parse_metadata_bundle(read_metadata(upscale_path))
+
+    assert result.positive == "original positive prompt"
+    assert result.negative == "original negative prompt"
+
+
+def test_nested_smart_metadata_reader_missing_image_returns_partial_unresolved(tmp_path):
+    from smart_metadata_reader.metadata_reader import parse_metadata_bundle, read_metadata
+
+    upscale_path = tmp_path / "upscaled.png"
+    _save_png_with_prompt(
+        upscale_path,
+        _upscale_prompt_graph(reader_image="missing.png"),
+        workflow=_upscale_workflow(reader_image="missing.png"),
+    )
+
+    result = parse_metadata_bundle(read_metadata(upscale_path))
+
+    assert result.positive == ""
+    assert result.negative == ""
+    assert result.status_message == "PARTIAL"
+    assert result.confidence <= 0.6
+    assert result.partial_result["unresolved"][0]["class_type"] == "SmartMetadataReader"
+    assert result.partial_result["unresolved"][0]["output_index"] == 2
+    assert result.partial_result["unresolved"][0]["resolved_output_role"] == "positive"
+    assert result.partial_result["unresolved"][0]["referenced_image_filename"] == "missing.png"
+    assert "referenced image not found" in result.partial_result["unresolved"][0]["reason"]
+    assert "Unresolved:" in result.setting
+
+
+def test_nested_smart_metadata_reader_rejects_unsafe_image_paths(tmp_path):
+    from smart_metadata_reader.metadata_reader import parse_metadata_bundle, read_metadata
+
+    for unsafe_path in ("../secret.png", "C:\\Users\\xxx\\secret.png"):
+        upscale_path = tmp_path / f"upscaled-{unsafe_path[0].encode().hex()}.png"
+        _save_png_with_prompt(
+            upscale_path,
+            _upscale_prompt_graph(reader_image=unsafe_path),
+            workflow=_upscale_workflow(reader_image=unsafe_path),
+        )
+
+        result = parse_metadata_bundle(read_metadata(upscale_path))
+
+        assert result.positive == ""
+        assert result.status_message == "PARTIAL"
+        assert result.partial_result["unresolved"][0]["class_type"] == "SmartMetadataReader"
+        assert "unsafe referenced image path" in result.partial_result["unresolved"][0]["reason"]
+
+
+def test_nested_smart_metadata_reader_respects_actual_connected_output_role(tmp_path):
+    from smart_metadata_reader.metadata_reader import parse_metadata_bundle, read_metadata
+
+    original_path = tmp_path / "003.png"
+    _save_png_with_prompt(original_path, _simple_prompt_graph())
+    prompt = _upscale_prompt_graph()
+    prompt["37"]["inputs"]["text"] = ["36", 3]
+    upscale_path = tmp_path / "upscaled.png"
+    _save_png_with_prompt(upscale_path, prompt, workflow=_upscale_workflow())
+
+    result = parse_metadata_bundle(read_metadata(upscale_path))
+
+    assert result.positive == "original negative prompt"
+    assert "SmartMetadataReader output negative used in positive chain" in result.debug_trace

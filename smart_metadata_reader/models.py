@@ -16,6 +16,8 @@ class MetadataBundle:
     user_comment_raw: str | None = None
     image_description_raw: str | None = None
     software_raw: str | None = None
+    image_path: str | None = None
+    base_dir: str | None = None
 
 
 @dataclass
@@ -24,6 +26,7 @@ class NodeRecord:
     class_type: str
     inputs: dict[str, Any]
     widgets_values: list[Any] | dict[str, Any] | None = None
+    outputs: list[Any] | None = None
 
 
 @dataclass

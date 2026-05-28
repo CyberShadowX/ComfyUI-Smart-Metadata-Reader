@@ -28,7 +28,9 @@ class DeepTranslatorTextAdapter:
         role: str,
         path: list[str],
         depth: int,
+        output_index: int | None = None,
     ) -> list[PromptSegment]:
+        del output_index
         return context.resolve_input(node, "text", role, path, depth)
 
 
@@ -51,7 +53,9 @@ class GenericTextAdapter:
         role: str,
         path: list[str],
         depth: int,
+        output_index: int | None = None,
     ) -> list[PromptSegment]:
+        del output_index
         segments: list[PromptSegment] = []
         for field in COMMON_TEXT_FIELDS:
             if field in node.inputs:

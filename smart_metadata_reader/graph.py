@@ -95,6 +95,23 @@ class GraphIndex:
                     return value, "workflow widget cache fallback"
         return None
 
+    def workflow_output_name(self, node_id: str | int, output_index: int) -> str | None:
+        node = self._workflow_nodes.get(str(node_id))
+        if node is None or not isinstance(node.outputs, list):
+            return None
+        if output_index < 0 or output_index >= len(node.outputs):
+            return None
+        output = node.outputs[output_index]
+        if isinstance(output, str):
+            return output
+        if not isinstance(output, dict):
+            return None
+        for field in ("name", "label", "display_name", "displayName"):
+            value = output.get(field)
+            if isinstance(value, str) and value:
+                return value
+        return None
+
     def _normalize_prompt_nodes(
         self,
         prompt: dict[str, Any] | None,
@@ -114,6 +131,7 @@ class GraphIndex:
                 class_type=class_type,
                 inputs=dict(inputs) if isinstance(inputs, dict) else {},
                 widgets_values=None,
+                outputs=raw_node.get("outputs"),
             )
         return nodes
 
@@ -143,6 +161,7 @@ class GraphIndex:
                 class_type=class_type,
                 inputs=dict(inputs) if isinstance(inputs, dict) else {},
                 widgets_values=raw_node.get("widgets_values"),
+                outputs=raw_node.get("outputs"),
             )
         return nodes
 
@@ -153,3 +172,5 @@ class GraphIndex:
                 continue
             if prompt_node.widgets_values is None:
                 prompt_node.widgets_values = workflow_node.widgets_values
+            if prompt_node.outputs is None:
+                prompt_node.outputs = workflow_node.outputs

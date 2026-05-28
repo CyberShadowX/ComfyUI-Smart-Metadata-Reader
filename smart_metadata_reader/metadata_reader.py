@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +46,17 @@ def _source_format(
     return "none"
 
 
+def _initial_recursion_stack(
+    bundle: MetadataBundle,
+    recursion_stack: tuple[str, ...] | None,
+) -> tuple[str, ...]:
+    if recursion_stack is not None:
+        return recursion_stack
+    if not bundle.image_path:
+        return ()
+    return (os.path.normcase(str(Path(bundle.image_path).resolve())),)
+
+
 def read_metadata(image_path: str | Path) -> MetadataBundle:
     path = Path(image_path)
     with Image.open(path) as image:
@@ -73,6 +85,8 @@ def read_metadata(image_path: str | Path) -> MetadataBundle:
         user_comment_raw=user_comment_raw,
         image_description_raw=image_description_raw,
         software_raw=software_raw,
+        image_path=str(path),
+        base_dir=str(path.parent),
     )
 
 
@@ -82,14 +96,18 @@ def parse_metadata_bundle(
     prefer_cached_text: bool = True,
     include_raw_json: bool = True,
     max_depth: int = 40,
+    _recursion_stack: tuple[str, ...] | None = None,
 ) -> ParseResult:
+    recursion_stack = _initial_recursion_stack(bundle, _recursion_stack)
     if bundle.prompt_raw:
         try:
             return _parse_comfyui_bundle(
                 bundle=bundle,
+                parameter_index=parameter_index,
                 prefer_cached_text=prefer_cached_text,
                 include_raw_json=include_raw_json,
                 max_depth=max_depth,
+                recursion_stack=recursion_stack,
             )
         except _ComfyGraphStartError as exc:
             if bundle.parameters_raw:
@@ -125,9 +143,11 @@ class _ComfyGraphStartError(Exception):
 
 def _parse_comfyui_bundle(
     bundle: MetadataBundle,
+    parameter_index: int,
     prefer_cached_text: bool,
     include_raw_json: bool,
     max_depth: int,
+    recursion_stack: tuple[str, ...],
 ) -> ParseResult:
     prompt = _load_required_json(bundle.prompt_raw, "prompt")
     workflow, workflow_error = _load_optional_json(bundle.workflow_raw, "workflow")
@@ -143,6 +163,10 @@ def _parse_comfyui_bundle(
         graph=graph,
         max_depth=max_depth,
         prefer_cached_text=prefer_cached_text,
+        parameter_index=parameter_index,
+        include_raw_json=include_raw_json,
+        base_dir=bundle.base_dir,
+        recursion_stack=recursion_stack,
     )
     positive_segments = resolver.resolve_positive(sampler)
     negative_segments = resolver.resolve_negative(sampler)

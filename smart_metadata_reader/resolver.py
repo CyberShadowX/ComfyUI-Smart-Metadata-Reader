@@ -6,6 +6,7 @@ from .adapters.base import AdapterRegistry, TextResolutionContext
 from .adapters.clip_text import CLIPTextEncodeAdapter, CLIPTextEncodeSDXLAdapter
 from .adapters.conditioning import ConditioningAdapter
 from .adapters.pysssss import ShowTextAdapter, StringFunctionAdapter
+from .adapters.smart_reader import SmartMetadataReaderAdapter
 from .adapters.text_sources import DeepTranslatorTextAdapter, GenericTextAdapter
 from .graph import GraphIndex
 from .models import NodeRecord, PromptSegment
@@ -19,10 +20,18 @@ class ConditioningResolver:
         adapters: AdapterRegistry | None = None,
         max_depth: int = 40,
         prefer_cached_text: bool = True,
+        parameter_index: int = 0,
+        include_raw_json: bool = True,
+        base_dir: str | None = None,
+        recursion_stack: tuple[str, ...] = (),
     ) -> None:
         self.graph = graph
         self.max_depth = max_depth
         self.prefer_cached_text = prefer_cached_text
+        self.parameter_index = parameter_index
+        self.include_raw_json = include_raw_json
+        self.base_dir = base_dir
+        self.recursion_stack = recursion_stack
         self.trace = TraceCollector()
         self.unresolved: list[dict[str, Any]] = []
         self._active: set[tuple[str, str, str]] = set()
@@ -80,6 +89,7 @@ class ConditioningResolver:
             path=[f"{sampler.class_type} {sampler.node_id}.{field}"],
             depth=0,
             field=field,
+            output_index=None,
         )
 
     def _resolve_value(
@@ -89,6 +99,7 @@ class ConditioningResolver:
         path: list[str],
         depth: int,
         field: str | None,
+        output_index: int | None = None,
     ) -> list[PromptSegment]:
         if depth > self.max_depth:
             self._record_unresolved_by_values(
@@ -122,6 +133,7 @@ class ConditioningResolver:
                 path=path + [f"link[{node_id}, {output_index}]"],
                 depth=depth + 1,
                 field=field or "",
+                output_index=output_index,
             )
 
         return []
@@ -133,6 +145,7 @@ class ConditioningResolver:
         path: list[str],
         depth: int,
         field: str,
+        output_index: int | None = None,
     ) -> list[PromptSegment]:
         node = self.graph.get_node(node_id)
         if node is None:
@@ -177,12 +190,19 @@ class ConditioningResolver:
                     prefer_cached_text=self.prefer_cached_text,
                     trace=self.trace,
                     max_depth=self.max_depth - depth,
+                    parse_max_depth=self.max_depth,
+                    parameter_index=self.parameter_index,
+                    include_raw_json=self.include_raw_json,
+                    base_dir=self.base_dir,
+                    recursion_stack=self.recursion_stack,
+                    unresolved=self.unresolved,
                 )
                 return text_context.resolve_node(
                     node_id=node.node_id,
                     role=role,
                     path=path,
                     depth=0,
+                    output_index=output_index,
                 )
 
             if self._conditioning_adapter.matches(node):
@@ -230,6 +250,7 @@ class ConditioningResolver:
                     path=path + [f"{node.class_type} {node.node_id}.{field}"],
                     depth=depth + 1,
                     field=field,
+                    output_index=None,
                 )
             )
         return segments
@@ -287,6 +308,7 @@ class ConditioningResolver:
         registry.register(CLIPTextEncodeSDXLAdapter())
         registry.register(StringFunctionAdapter())
         registry.register(ShowTextAdapter())
+        registry.register(SmartMetadataReaderAdapter())
         registry.register(DeepTranslatorTextAdapter())
         registry.register(GenericTextAdapter())
         return registry

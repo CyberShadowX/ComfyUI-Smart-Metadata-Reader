@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from ..graph import GraphIndex
 from ..models import NodeRecord, PromptSegment
@@ -18,6 +18,7 @@ class NodeAdapter(Protocol):
         role: str,
         path: list[str],
         depth: int,
+        output_index: int | None = None,
     ) -> list[PromptSegment]:
         ...
 
@@ -44,12 +45,24 @@ class TextResolutionContext:
         prefer_cached_text: bool = True,
         trace: TraceCollector | None = None,
         max_depth: int = 40,
+        parse_max_depth: int | None = None,
+        parameter_index: int = 0,
+        include_raw_json: bool = True,
+        base_dir: str | None = None,
+        recursion_stack: tuple[str, ...] = (),
+        unresolved: list[dict[str, Any]] | None = None,
     ) -> None:
         self.graph = graph
         self.registry = registry or AdapterRegistry()
         self.prefer_cached_text = prefer_cached_text
         self.trace = trace or TraceCollector()
         self.max_depth = max_depth
+        self.parse_max_depth = parse_max_depth if parse_max_depth is not None else max_depth
+        self.parameter_index = parameter_index
+        self.include_raw_json = include_raw_json
+        self.base_dir = base_dir
+        self.recursion_stack = recursion_stack
+        self.unresolved = unresolved
 
     def resolve_node(
         self,
@@ -57,6 +70,7 @@ class TextResolutionContext:
         role: str,
         path: list[str],
         depth: int = 0,
+        output_index: int | None = None,
     ) -> list[PromptSegment]:
         if depth > self.max_depth:
             self.trace.add("TEXT_TRACE", f"max depth reached at node {node_id}")
@@ -87,6 +101,7 @@ class TextResolutionContext:
             role=role,
             path=path + [f"{node.class_type} {node.node_id}"],
             depth=depth + 1,
+            output_index=output_index,
         )
 
     def resolve_input(
@@ -140,6 +155,7 @@ class TextResolutionContext:
                 role=role,
                 path=path + [f"link[{target_id}, {output_index}]"],
                 depth=depth + 1,
+                output_index=output_index,
             )
 
         if isinstance(value, list):
@@ -173,3 +189,29 @@ class TextResolutionContext:
         lowered = node.class_type.lower()
         markers = ("gemini", "chatgpt", "claude", "llm", "language_model")
         return any(marker in lowered for marker in markers)
+
+    def record_unresolved(
+        self,
+        node: NodeRecord,
+        field: str,
+        role: str,
+        reason: str,
+        **extra: Any,
+    ) -> None:
+        entry: dict[str, Any] = {
+            "node_id": node.node_id,
+            "class_type": node.class_type,
+            "field": field,
+            "role": role,
+            "reason": reason,
+        }
+        entry.update(extra)
+        if self.unresolved is not None:
+            self.unresolved.append(entry)
+        self.trace.add(
+            f"{role.upper()}_TRACE",
+            (
+                f"UNRESOLVED {node.class_type} {node.node_id} "
+                f"field={field} role={role} reason={reason}"
+            ),
+        )

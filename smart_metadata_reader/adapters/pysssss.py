@@ -15,7 +15,9 @@ class StringFunctionAdapter:
         role: str,
         path: list[str],
         depth: int,
+        output_index: int | None = None,
     ) -> list[PromptSegment]:
+        del output_index
         action = str(node.inputs.get("action", "append")).lower()
         fields = ("text_a", "text_b", "text_c")
         if action != "append":
@@ -41,7 +43,9 @@ class ShowTextAdapter:
         role: str,
         path: list[str],
         depth: int,
+        output_index: int | None = None,
     ) -> list[PromptSegment]:
+        del output_index
         cached_text = self._cached_text(node, context)
         if cached_text:
             text, source = cached_text
