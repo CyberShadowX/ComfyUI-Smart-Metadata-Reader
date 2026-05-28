@@ -115,6 +115,93 @@ def _upscale_workflow(reader_image="003.png"):
     }
 
 
+def _llm_showtext_upscale_prompt(show_class="ShowText|pysssss", include_cache=True):
+    return {
+        "22": {
+            "class_type": "FaceDetailer",
+            "inputs": {"image": ["24", 0], "positive": ["26", 0], "negative": ["27", 0]},
+        },
+        "24": {
+            "class_type": "UltimateSDUpscale",
+            "inputs": {
+                "image": ["40", 0],
+                "positive": ["26", 0],
+                "negative": ["27", 0],
+                "seed": 222,
+                "steps": 9,
+                "cfg": 1.5,
+                "sampler_name": "Euler",
+                "scheduler": "normal",
+            },
+        },
+        "26": {"class_type": "CLIPTextEncode", "inputs": {"text": ["37", 0]}},
+        "27": {"class_type": "CLIPTextEncode", "inputs": {"text": "bad hands, low quality"}},
+        "37": {"class_type": show_class, "inputs": {"text": ["90", 0]}},
+        "40": {"class_type": "LoadImage", "inputs": {"image": "source.png"}},
+        "90": {
+            "class_type": "GeminiChatNode",
+            "inputs": {
+                "system_instruction": "system instruction should not enter prompt",
+                "prompt": "Gemini prompt template should not enter prompt",
+                "api_key": "secret-key",
+                "model": "gemini-test-model",
+            },
+        },
+        "91": {"class_type": "ShowText|pysssss", "inputs": {"text": ["90", 0]}},
+        "99": {"class_type": "PreviewImage", "inputs": {"images": ["22", 0]}},
+    }
+
+
+def _llm_showtext_workflow(show_class="ShowText|pysssss", cached_text="cached gemini positive prompt"):
+    widgets_values = [cached_text] if cached_text else []
+    return {
+        "nodes": [
+            {
+                "id": 37,
+                "type": show_class,
+                "inputs": {"text": ["90", 0]},
+                "widgets_values": widgets_values,
+            },
+            {
+                "id": 90,
+                "type": "GeminiChatNode",
+                "inputs": {
+                    "system_instruction": "system instruction should not enter prompt",
+                    "prompt": "Gemini prompt template should not enter prompt",
+                    "api_key": "secret-key",
+                    "model": "gemini-test-model",
+                },
+                "widgets_values": [
+                    "Gemini prompt template should not enter prompt",
+                    "system instruction should not enter prompt",
+                    "secret-key",
+                    "gemini-test-model",
+                ],
+            },
+            {
+                "id": 91,
+                "type": "ShowText|pysssss",
+                "inputs": {"text": ["90", 0]},
+                "widgets_values": ["wrong unused prompt"],
+            },
+        ]
+    }
+
+
+def _bundle_for_prompt(prompt, workflow=None, filename="sample.png", width=1200, height=1600):
+    from smart_metadata_reader.models import MetadataBundle
+
+    return MetadataBundle(
+        filename=filename,
+        width=width,
+        height=height,
+        prompt_raw=json.dumps(prompt),
+        workflow_raw=json.dumps(workflow) if workflow is not None else None,
+        parameters_raw=None,
+        source_format="ComfyUI prompt/workflow",
+    )
+
+
 def test_read_metadata_extracts_png_text_chunks_and_dimensions(tmp_path):
     from smart_metadata_reader.metadata_reader import read_metadata
 
@@ -609,3 +696,109 @@ def test_nested_smart_metadata_reader_respects_actual_connected_output_role(tmp_
 
     assert result.positive == "original negative prompt"
     assert "SmartMetadataReader output negative used in positive chain" in result.debug_trace
+
+
+def test_showtext_cache_from_llm_chain_is_used_without_reading_llm_template():
+    from smart_metadata_reader.metadata_reader import parse_metadata_bundle
+
+    result = parse_metadata_bundle(
+        _bundle_for_prompt(
+            _llm_showtext_upscale_prompt(),
+            workflow=_llm_showtext_workflow(),
+        )
+    )
+
+    assert result.positive == "cached gemini positive prompt"
+    assert result.negative == "bad hands, low quality"
+    assert "Gemini prompt template" not in result.positive
+    assert "system instruction" not in result.positive
+    assert "secret-key" not in result.positive
+    assert result.status_message != "FAILED"
+    assert "using cached ShowText text" in result.debug_trace
+    assert "wrong unused prompt" not in result.positive
+
+
+def test_showtext_cache_compatible_class_from_llm_chain_is_used():
+    from smart_metadata_reader.metadata_reader import parse_metadata_bundle
+
+    result = parse_metadata_bundle(
+        _bundle_for_prompt(
+            _llm_showtext_upscale_prompt(show_class="ShowText"),
+            workflow=_llm_showtext_workflow(show_class="ShowText"),
+        )
+    )
+
+    assert result.positive == "cached gemini positive prompt"
+    assert "Gemini prompt template" not in result.positive
+
+
+def test_showtext_cache_is_single_segment_inside_string_function_chain():
+    from smart_metadata_reader.metadata_reader import parse_metadata_bundle
+
+    prompt = _llm_showtext_upscale_prompt()
+    prompt["26"]["inputs"]["text"] = ["39", 0]
+    prompt["39"] = {
+        "class_type": "StringFunction|pysssss",
+        "inputs": {
+            "action": "append",
+            "text_a": "manual prompt",
+            "text_b": ["37", 0],
+            "text_c": "preset prompt",
+        },
+    }
+
+    result = parse_metadata_bundle(
+        _bundle_for_prompt(prompt, workflow=_llm_showtext_workflow())
+    )
+
+    assert "manual prompt" in result.positive
+    assert "cached gemini positive prompt" in result.positive
+    assert "preset prompt" in result.positive
+    assert "Gemini prompt template" not in result.positive
+    assert "system instruction" not in result.positive
+    assert result.positive.index("manual prompt") < result.positive.index("cached gemini positive prompt")
+    assert result.positive.index("cached gemini positive prompt") < result.positive.index("preset prompt")
+
+
+def test_conditioning_combine_showtext_cache_does_not_override_other_branches():
+    from smart_metadata_reader.metadata_reader import parse_metadata_bundle
+
+    prompt = _llm_showtext_upscale_prompt()
+    prompt["24"]["inputs"]["positive"] = ["41", 0]
+    prompt["41"] = {
+        "class_type": "ConditioningCombine",
+        "inputs": {"conditioning_1": ["42", 0], "conditioning_2": ["43", 0]},
+    }
+    prompt["42"] = {"class_type": "CLIPTextEncode", "inputs": {"text": "branch A manual prompt"}}
+    prompt["43"] = {"class_type": "CLIPTextEncode", "inputs": {"text": ["37", 0]}}
+
+    result = parse_metadata_bundle(
+        _bundle_for_prompt(prompt, workflow=_llm_showtext_workflow())
+    )
+
+    assert "branch A manual prompt" in result.positive
+    assert "cached gemini positive prompt" in result.positive
+    assert "Gemini prompt template" not in result.positive
+
+
+def test_showtext_missing_cache_with_llm_upstream_returns_partial_unresolved():
+    from smart_metadata_reader.metadata_reader import parse_metadata_bundle
+
+    result = parse_metadata_bundle(
+        _bundle_for_prompt(
+            _llm_showtext_upscale_prompt(include_cache=False),
+            workflow=_llm_showtext_workflow(cached_text=""),
+        )
+    )
+
+    assert result.positive == ""
+    assert "Gemini prompt template" not in result.positive
+    assert "system instruction" not in result.positive
+    assert result.status_message == "PARTIAL"
+    assert result.confidence <= 0.6
+    assert result.partial_result["unresolved"][0]["class_type"] == "ShowText|pysssss"
+    assert (
+        result.partial_result["unresolved"][0]["reason"]
+        == "ShowText cache missing and upstream is LLM runtime output not embedded"
+    )
+    assert "Unresolved:" in result.setting

@@ -34,7 +34,7 @@ class StringFunctionAdapter:
 
 class ShowTextAdapter:
     def matches(self, node: NodeRecord) -> bool:
-        return node.class_type == "ShowText|pysssss"
+        return _is_show_text_node(node)
 
     def resolve(
         self,
@@ -50,6 +50,10 @@ class ShowTextAdapter:
         if cached_text:
             text, source = cached_text
             confidence = 0.75 if source == "workflow widget cache fallback" else 1.0
+            context.trace.add(
+                "TEXT_TRACE",
+                f"{node.class_type} {node.node_id}: using cached ShowText text from {source}",
+            )
             if source == "workflow widget cache fallback":
                 context.trace.add(
                     "TEXT_TRACE",
@@ -68,6 +72,23 @@ class ShowTextAdapter:
                     confidence=confidence,
                 )
             ]
+
+        upstream_llm = self._upstream_llm_runtime_node(node, context)
+        if upstream_llm is not None:
+            context.trace.add(
+                "TEXT_TRACE",
+                (
+                    f"{upstream_llm.class_type} {upstream_llm.node_id}: low confidence "
+                    "LLM template input skipped, no cached generated output found"
+                ),
+            )
+            context.record_unresolved(
+                node=node,
+                field="text",
+                role=role,
+                reason="ShowText cache missing and upstream is LLM runtime output not embedded",
+            )
+            return []
 
         context.trace.add(
             "TEXT_TRACE",
@@ -94,3 +115,21 @@ class ShowTextAdapter:
             if workflow:
                 return workflow
         return None
+
+    def _upstream_llm_runtime_node(
+        self,
+        node: NodeRecord,
+        context: TextResolutionContext,
+    ) -> NodeRecord | None:
+        target = context.graph.link_target(node.inputs.get("text"))
+        if target is None:
+            return None
+        upstream = context.graph.get_node(target[0])
+        if upstream is not None and context.is_llm_template_node(upstream):
+            return upstream
+        return None
+
+
+def _is_show_text_node(node: NodeRecord) -> bool:
+    lowered = node.class_type.lower().replace("_", "").replace(" ", "")
+    return lowered == "showtext" or lowered.startswith("showtext|")

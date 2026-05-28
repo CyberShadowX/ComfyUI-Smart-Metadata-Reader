@@ -187,7 +187,20 @@ class TextResolutionContext:
 
     def is_llm_template_node(self, node: NodeRecord) -> bool:
         lowered = node.class_type.lower()
-        markers = ("gemini", "chatgpt", "claude", "llm", "language_model")
+        markers = (
+            "gemini",
+            "openai",
+            "chatgpt",
+            "claude",
+            "llm",
+            "vlm",
+            "language_model",
+            "image caption",
+            "caption",
+            "prompt generator",
+            "promptgenerator",
+            "tagger",
+        )
         return any(marker in lowered for marker in markers)
 
     def record_unresolved(

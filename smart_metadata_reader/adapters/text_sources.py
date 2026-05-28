@@ -64,5 +64,18 @@ class GenericTextAdapter:
 
 
 def context_marker_is_llm(lowered_class_type: str) -> bool:
-    markers = ("gemini", "chatgpt", "claude", "llm", "language_model")
+    markers = (
+        "gemini",
+        "openai",
+        "chatgpt",
+        "claude",
+        "llm",
+        "vlm",
+        "language_model",
+        "image caption",
+        "caption",
+        "prompt generator",
+        "promptgenerator",
+        "tagger",
+    )
     return any(marker in lowered_class_type for marker in markers)
