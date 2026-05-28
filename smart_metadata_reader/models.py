@@ -13,6 +13,9 @@ class MetadataBundle:
     workflow_raw: str | None
     parameters_raw: str | None
     source_format: str
+    user_comment_raw: str | None = None
+    image_description_raw: str | None = None
+    software_raw: str | None = None
 
 
 @dataclass

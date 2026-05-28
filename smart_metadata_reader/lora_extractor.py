@@ -12,6 +12,7 @@ from .adapters.loaders import (
     strength_model,
     vae_name,
 )
+from .adapters.samplers import is_sampler
 from .graph import GraphIndex
 from .models import LoraInfo, NodeRecord
 
@@ -205,6 +206,11 @@ def _walk_output_chain_for_vae(graph: GraphIndex, output_node: NodeRecord) -> st
             continue
         visited.add(node.node_id)
 
+        if is_sampler(node):
+            name = _vae_name_from_node_input(graph, node)
+            if name:
+                return name
+
         if _is_vae_decode(node):
             name = _vae_name_from_decode_node(graph, node)
             if name:
@@ -221,7 +227,11 @@ def _walk_output_chain_for_vae(graph: GraphIndex, output_node: NodeRecord) -> st
 
 
 def _vae_name_from_decode_node(graph: GraphIndex, decode_node: NodeRecord) -> str:
-    target = graph.link_target(decode_node.inputs.get("vae"))
+    return _vae_name_from_node_input(graph, decode_node)
+
+
+def _vae_name_from_node_input(graph: GraphIndex, node: NodeRecord) -> str:
+    target = graph.link_target(node.inputs.get("vae"))
     if target is None:
         return ""
     vae_node = graph.get_node(target[0])

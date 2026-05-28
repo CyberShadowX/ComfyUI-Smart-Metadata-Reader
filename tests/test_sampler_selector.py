@@ -152,3 +152,61 @@ def test_extracts_ksampler_advanced_and_custom_field_variants():
         "sampler_name": "custom_sampler",
         "scheduler": "sgm_uniform",
     }
+
+
+def test_selects_ultimate_sd_upscale_sampler_like_node_upstream_of_save_image():
+    prompt = {
+        "1": {"class_type": "CLIPTextEncode", "inputs": {"text": "positive"}},
+        "2": {"class_type": "CLIPTextEncode", "inputs": {"text": "negative"}},
+        "7": {
+            "class_type": "UltimateSDUpscale",
+            "inputs": {
+                "positive": ["1", 0],
+                "negative": ["2", 0],
+                "model": ["9", 0],
+                "vae": ["10", 0],
+                "seed": 123,
+                "steps": 12,
+                "cfg": 2.5,
+                "sampler_name": "euler",
+                "scheduler_name": "normal",
+                "tile_width": 768,
+                "seam_fix_mode": "band pass",
+            },
+        },
+        "8": {"class_type": "SaveImage", "inputs": {"images": ["7", 0]}},
+        "9": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "model.safetensors"}},
+        "10": {"class_type": "VAELoader", "inputs": {"vae_name": "vae.safetensors"}},
+    }
+
+    selection = select_sampler(prompt)
+
+    assert selection.sampler.node_id == "7"
+    assert selection.sampler.class_type == "UltimateSDUpscale"
+    assert selection.selected_by == "output_chain"
+    assert "SaveImage 8.images <- UltimateSDUpscale 7" in selection.debug_trace
+
+
+def test_unsupported_output_chain_error_includes_diagnostics():
+    from smart_metadata_reader.sampler_selector import select_final_sampler
+
+    prompt = {
+        "1": {
+            "class_type": "UnsupportedGenerator",
+            "inputs": {"image": ["3", 0], "tile_width": 768},
+        },
+        "2": {"class_type": "SaveImage", "inputs": {"images": ["1", 0]}},
+        "3": {"class_type": "LoadImage", "inputs": {"image": "source.png"}},
+    }
+
+    try:
+        select_final_sampler(GraphIndex(prompt=prompt, workflow=None))
+    except ValueError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("Expected unsupported output chain to fail")
+
+    assert "no supported sampler candidate found" in message
+    assert "final output nodes found: SaveImage 2" in message
+    assert "SaveImage 2.images <- UnsupportedGenerator 1" in message
+    assert "input keys: image, tile_width" in message

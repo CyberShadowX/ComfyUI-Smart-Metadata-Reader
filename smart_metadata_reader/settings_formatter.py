@@ -29,6 +29,9 @@ def format_setting(result: ParseResult) -> str:
     if unresolved_lines:
         lines.append("Unresolved:")
         lines.extend(unresolved_lines)
+    reason = result.partial_result.get("reason")
+    if isinstance(reason, str) and reason:
+        lines.append(f"Failure Reason: {reason}")
     return "\n".join(lines)
 
 

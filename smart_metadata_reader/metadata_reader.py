@@ -8,6 +8,7 @@ from PIL import Image
 
 from .a1111_parser import parse_a1111_parameters
 from .adapters.samplers import extract_sampler_settings
+from .civitai_parser import parse_exif_user_comment
 from .graph import GraphIndex
 from .lora_extractor import extract_loras, extract_model_name, extract_vae_name
 from .models import MetadataBundle, ParseResult, PromptSegment
@@ -26,11 +27,21 @@ def _metadata_value(info: dict[str, Any], key: str) -> str | None:
     return str(value)
 
 
-def _source_format(prompt_raw: str | None, workflow_raw: str | None, parameters_raw: str | None) -> str:
+def _source_format(
+    prompt_raw: str | None,
+    workflow_raw: str | None,
+    parameters_raw: str | None,
+    user_comment_raw: str | None,
+    image_description_raw: str | None,
+) -> str:
     if prompt_raw or workflow_raw:
         return "ComfyUI prompt/workflow"
     if parameters_raw:
         return "A1111 parameters"
+    if user_comment_raw:
+        return "EXIF UserComment"
+    if image_description_raw:
+        return "EXIF ImageDescription"
     return "none"
 
 
@@ -40,6 +51,9 @@ def read_metadata(image_path: str | Path) -> MetadataBundle:
         prompt_raw = _metadata_value(image.info, "prompt")
         workflow_raw = _metadata_value(image.info, "workflow")
         parameters_raw = _metadata_value(image.info, "parameters")
+        user_comment_raw = _exif_user_comment(image)
+        image_description_raw = _exif_text_tag(image, 270)
+        software_raw = _exif_text_tag(image, 305)
         width, height = image.size
 
     return MetadataBundle(
@@ -49,7 +63,16 @@ def read_metadata(image_path: str | Path) -> MetadataBundle:
         prompt_raw=prompt_raw,
         workflow_raw=workflow_raw,
         parameters_raw=parameters_raw,
-        source_format=_source_format(prompt_raw, workflow_raw, parameters_raw),
+        source_format=_source_format(
+            prompt_raw,
+            workflow_raw,
+            parameters_raw,
+            user_comment_raw,
+            image_description_raw,
+        ),
+        user_comment_raw=user_comment_raw,
+        image_description_raw=image_description_raw,
+        software_raw=software_raw,
     )
 
 
@@ -83,6 +106,10 @@ def parse_metadata_bundle(
             parameter_index=parameter_index,
             fallback_reason="missing ComfyUI prompt JSON",
         )
+
+    exif_text, exif_source = _exif_fallback_text(bundle)
+    if exif_text:
+        return _parse_exif_bundle(bundle, exif_text, exif_source)
 
     return _failed_result(
         bundle=bundle,
@@ -304,6 +331,22 @@ def _parse_a1111_bundle(
     return result
 
 
+def _parse_exif_bundle(
+    bundle: MetadataBundle,
+    exif_text: str,
+    exif_source: str,
+) -> ParseResult:
+    result = parse_exif_user_comment(exif_text, exif_source)
+    result.filename = bundle.filename
+    result.width = result.width or bundle.width
+    result.height = result.height or bundle.height
+    result.partial_result["fallback_reason"] = (
+        "missing ComfyUI prompt/workflow and A1111 parameters metadata"
+    )
+    result.setting = format_setting(result)
+    return result
+
+
 def _failed_result(
     bundle: MetadataBundle,
     status_message: str,
@@ -323,6 +366,88 @@ def _failed_result(
     )
     result.setting = format_setting(result)
     return result
+
+
+def _exif_fallback_text(bundle: MetadataBundle) -> tuple[str | None, str]:
+    if bundle.user_comment_raw:
+        return bundle.user_comment_raw, "EXIF UserComment"
+    if bundle.image_description_raw:
+        return bundle.image_description_raw, "EXIF ImageDescription"
+    return None, "EXIF"
+
+
+def _exif_user_comment(image: Image.Image) -> str | None:
+    exif = image.getexif()
+    value = exif.get(37510)
+    if value is None:
+        try:
+            exif_ifd = exif.get_ifd(34665)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            exif_ifd = {}
+        value = exif_ifd.get(37510) if isinstance(exif_ifd, dict) else None
+    return _decode_exif_text(value)
+
+
+def _exif_text_tag(image: Image.Image, tag: int) -> str | None:
+    return _decode_exif_text(image.getexif().get(tag))
+
+
+def _decode_exif_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return _clean_decoded_exif_text(value)
+    if not isinstance(value, bytes):
+        return _clean_decoded_exif_text(str(value))
+
+    data = value
+    prefix = data[:8].upper()
+    if prefix.startswith(b"ASCII"):
+        payload = data[8:]
+        encodings = ("utf-8", "latin1")
+    elif prefix.startswith(b"UNICODE"):
+        payload = data[8:]
+        encodings = ("utf-16le", "utf-16be", "utf-8", "latin1")
+    elif prefix.startswith(b"JIS"):
+        payload = data[8:]
+        encodings = ("shift_jis", "utf-8", "latin1")
+    else:
+        payload = data
+        encodings = ("utf-8", "utf-16le", "utf-16be", "latin1")
+
+    candidates: list[str] = []
+    for encoding in encodings:
+        candidate_payload = payload
+        if encoding.startswith("utf-16") and len(candidate_payload) % 2:
+            candidate_payload += b"\x00"
+        try:
+            candidates.append(candidate_payload.decode(encoding))
+        except UnicodeDecodeError:
+            continue
+    if not candidates:
+        candidates.append(payload.decode("latin1", errors="replace"))
+
+    best = max(candidates, key=_readability_score)
+    return _clean_decoded_exif_text(best)
+
+
+def _clean_decoded_exif_text(text: str) -> str | None:
+    cleaned = text.replace("\x00", "").strip()
+    return cleaned or None
+
+
+def _readability_score(text: str) -> float:
+    if not text:
+        return 0.0
+    cleaned = text.strip()
+    if not cleaned:
+        return 0.0
+    printable = sum(1 for char in cleaned if char.isprintable() or char in "\r\n\t")
+    replacement = cleaned.count("\ufffd")
+    nuls = cleaned.count("\x00")
+    alnum = sum(1 for char in cleaned if char.isalnum())
+    length = len(cleaned)
+    return (printable / length) + (alnum / max(length, 1) * 0.2) - replacement - nuls
 
 
 def _int_or_default(value: Any, default: int) -> int:
