@@ -229,25 +229,48 @@ def test_plugin_package_import_works_without_repo_root_on_sys_path(tmp_path):
     assert "package import ok" in completed.stdout
 
 
-def test_input_types_prefers_comfyui_filename_list(monkeypatch):
+def test_input_types_ignores_unusable_comfyui_filename_list_and_scans_input_dir(
+    tmp_path,
+    monkeypatch,
+):
     import nodes
+
+    (tmp_path / "root.png").write_bytes(b"fake")
+    subdir = tmp_path / "sub"
+    subdir.mkdir()
+    (subdir / "a.jpg").write_bytes(b"fake")
+    (subdir / "b.webp").write_bytes(b"fake")
+    (subdir / "note.txt").write_text("ignore me")
+
+    def broken_filename_list(category):
+        raise KeyError(category)
 
     monkeypatch.setattr(
         nodes,
         "folder_paths",
-        SimpleNamespace(get_filename_list=lambda category: ["z.png", "nested/a.webp"]),
+        SimpleNamespace(
+            get_filename_list=broken_filename_list,
+            get_input_directory=lambda: str(tmp_path),
+        ),
     )
 
     input_types = nodes.SmartMetadataReader.INPUT_TYPES()
 
-    assert input_types["required"]["image"][0] == ["z.png", "nested/a.webp"]
+    assert input_types["required"]["image"][0] == [
+        "root.png",
+        "sub/a.jpg",
+        "sub/b.webp",
+    ]
 
 
 def test_smart_metadata_reader_input_types_include_uploadable_image(tmp_path, monkeypatch):
     import nodes
 
     (tmp_path / "a.png").write_bytes(b"fake")
+    (tmp_path / "c.jpg").write_bytes(b"fake")
+    (tmp_path / "d.jpeg").write_bytes(b"fake")
     (tmp_path / "b.webp").write_bytes(b"fake")
+    (tmp_path / "ignored.bmp").write_bytes(b"fake")
     (tmp_path / "note.txt").write_text("ignore me")
 
     monkeypatch.setattr(
@@ -259,7 +282,7 @@ def test_smart_metadata_reader_input_types_include_uploadable_image(tmp_path, mo
     input_types = nodes.SmartMetadataReader.INPUT_TYPES()
     required = input_types["required"]
 
-    assert required["image"][0] == ["a.png", "b.webp"]
+    assert required["image"][0] == ["a.png", "b.webp", "c.jpg", "d.jpeg"]
     assert required["image"][1]["image_upload"] is True
     assert required["parameter_index"][0] == "INT"
     assert required["parameter_index"][1]["default"] == 0
@@ -270,6 +293,39 @@ def test_smart_metadata_reader_input_types_include_uploadable_image(tmp_path, mo
     assert required["max_depth"][1]["default"] == 40
     assert required["max_depth"][1]["min"] == 1
     assert required["max_depth"][1]["max"] == 200
+
+
+def test_smart_metadata_reader_input_types_empty_or_missing_input_dir_is_safe(
+    tmp_path,
+    monkeypatch,
+):
+    import nodes
+
+    monkeypatch.setattr(
+        nodes,
+        "folder_paths",
+        SimpleNamespace(get_input_directory=lambda: str(tmp_path)),
+    )
+    assert nodes.SmartMetadataReader.INPUT_TYPES()["required"]["image"][0] == []
+
+    monkeypatch.setattr(
+        nodes,
+        "folder_paths",
+        SimpleNamespace(get_input_directory=lambda: str(tmp_path / "missing")),
+    )
+    assert nodes.SmartMetadataReader.INPUT_TYPES()["required"]["image"][0] == []
+
+
+def test_smart_metadata_reader_input_types_handles_input_directory_errors(monkeypatch):
+    import nodes
+
+    monkeypatch.setattr(
+        nodes,
+        "folder_paths",
+        SimpleNamespace(get_input_directory=lambda: (_ for _ in ()).throw(KeyError("input"))),
+    )
+
+    assert nodes.SmartMetadataReader.INPUT_TYPES()["required"]["image"][0] == []
 
 
 def test_smart_metadata_reader_return_contract():
@@ -477,6 +533,21 @@ def test_smart_metadata_reader_is_changed_tracks_file_content(tmp_path, monkeypa
     assert first != second
 
 
+def test_smart_metadata_reader_is_changed_handles_missing_or_bad_paths(monkeypatch):
+    import nodes
+
+    monkeypatch.setattr(
+        nodes,
+        "folder_paths",
+        SimpleNamespace(get_annotated_filepath=lambda image: (_ for _ in ()).throw(KeyError("input"))),
+    )
+
+    value = nodes.SmartMetadataReader.IS_CHANGED("missing.png")
+
+    assert isinstance(value, str)
+    assert value.startswith("missing:")
+
+
 def test_smart_metadata_reader_validate_inputs_checks_image_exists(tmp_path, monkeypatch):
     import nodes
 
@@ -494,6 +565,28 @@ def test_smart_metadata_reader_validate_inputs_checks_image_exists(tmp_path, mon
     assert isinstance(invalid, str)
     assert "Invalid image file" in invalid
     assert str(missing) in invalid
+
+
+def test_smart_metadata_reader_validate_inputs_falls_back_when_exists_helper_errors(
+    tmp_path,
+    monkeypatch,
+):
+    import nodes
+
+    existing = tmp_path / "exists.png"
+    existing.write_bytes(b"fake")
+
+    monkeypatch.setattr(
+        nodes,
+        "folder_paths",
+        SimpleNamespace(
+            exists_annotated_filepath=lambda image: (_ for _ in ()).throw(KeyError("input")),
+            get_input_directory=lambda: str(tmp_path),
+        ),
+    )
+
+    assert nodes.SmartMetadataReader.VALIDATE_INPUTS("exists.png") is True
+    assert "Invalid image file" in nodes.SmartMetadataReader.VALIDATE_INPUTS("missing.png")
 
 
 def test_smart_metadata_reader_validate_inputs_uses_comfyui_exists_helper(monkeypatch):

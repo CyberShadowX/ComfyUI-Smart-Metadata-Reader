@@ -18,7 +18,7 @@ except ImportError:
     folder_paths = None  # type: ignore
 
 
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff"}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 class SmartMetadataReader:
@@ -68,18 +68,21 @@ class SmartMetadataReader:
     @classmethod
     def IS_CHANGED(cls, image: str, **kwargs: Any) -> str:
         del kwargs
-        image_path = _resolve_image_path(image)
+        image_path = _resolve_image_path_safely(image)
         return _file_digest(image_path)
 
     @classmethod
     def VALIDATE_INPUTS(cls, image: str, **kwargs: Any) -> bool | str:
         del kwargs
         if folder_paths is not None and hasattr(folder_paths, "exists_annotated_filepath"):
-            if folder_paths.exists_annotated_filepath(image):
-                return True
-            return f"Invalid image file: {image}"
+            try:
+                if folder_paths.exists_annotated_filepath(image):
+                    return True
+                return f"Invalid image file: {image}"
+            except Exception:
+                pass
 
-        image_path = _resolve_image_path(image)
+        image_path = _resolve_image_path_safely(image)
         if Path(image_path).exists():
             return True
         return f"Invalid image file: {image_path}"
@@ -139,18 +142,29 @@ class SmartMetadataReader:
 
 
 def _input_images() -> list[str]:
-    if folder_paths is not None and hasattr(folder_paths, "get_filename_list"):
-        return list(folder_paths.get_filename_list("input"))
     if folder_paths is None or not hasattr(folder_paths, "get_input_directory"):
         return []
-    input_dir = Path(folder_paths.get_input_directory())
-    if not input_dir.exists():
+
+    try:
+        input_dir_value = folder_paths.get_input_directory()
+    except Exception:
         return []
-    return sorted(
-        entry.name
-        for entry in input_dir.iterdir()
-        if entry.is_file() and entry.suffix.lower() in IMAGE_EXTENSIONS
-    )
+    if not input_dir_value:
+        return []
+
+    input_dir = Path(input_dir_value)
+    if not input_dir.is_dir():
+        return []
+
+    images: list[str] = []
+    for root, _dirs, files in os.walk(input_dir):
+        for filename in files:
+            if Path(filename).suffix.lower() not in IMAGE_EXTENSIONS:
+                continue
+            full_path = Path(root) / filename
+            relative_path = os.path.relpath(full_path, input_dir)
+            images.append(relative_path.replace(os.sep, "/"))
+    return sorted(images)
 
 
 def _resolve_image_path(image: str) -> str:
@@ -158,6 +172,22 @@ def _resolve_image_path(image: str) -> str:
         return str(folder_paths.get_annotated_filepath(image))
     if folder_paths is not None and hasattr(folder_paths, "get_input_directory"):
         return str(Path(folder_paths.get_input_directory()) / image)
+    return os.fspath(image)
+
+
+def _resolve_image_path_safely(image: str) -> str:
+    try:
+        return _resolve_image_path(image)
+    except Exception:
+        pass
+
+    if folder_paths is not None and hasattr(folder_paths, "get_input_directory"):
+        try:
+            input_dir = folder_paths.get_input_directory()
+        except Exception:
+            input_dir = None
+        if input_dir:
+            return str(Path(input_dir) / image)
     return os.fspath(image)
 
 
