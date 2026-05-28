@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from smart_metadata_reader.models import NodeRecord
+from ..models import NodeRecord
 
 
 CHECKPOINT_NAME_FIELDS = ("ckpt_name", "checkpoint", "model_name", "name")

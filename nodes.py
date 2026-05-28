@@ -5,8 +5,12 @@ import os
 from pathlib import Path
 from typing import Any
 
-from smart_metadata_reader.image_io import load_image_and_mask
-from smart_metadata_reader.metadata_reader import parse_metadata_bundle, read_metadata
+try:
+    from .smart_metadata_reader.image_io import load_image_and_mask
+    from .smart_metadata_reader.metadata_reader import parse_metadata_bundle, read_metadata
+except ImportError:
+    from smart_metadata_reader.image_io import load_image_and_mask
+    from smart_metadata_reader.metadata_reader import parse_metadata_bundle, read_metadata
 
 try:
     import folder_paths  # type: ignore

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from smart_metadata_reader.models import NodeRecord
+from ..models import NodeRecord
 
 
 ROLE_FIELD_ORDER = {

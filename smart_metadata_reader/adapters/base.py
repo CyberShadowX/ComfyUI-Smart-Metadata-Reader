@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from smart_metadata_reader.graph import GraphIndex
-from smart_metadata_reader.models import NodeRecord, PromptSegment
-from smart_metadata_reader.trace import TraceCollector
+from ..graph import GraphIndex
+from ..models import NodeRecord, PromptSegment
+from ..trace import TraceCollector
 
 
 class NodeAdapter(Protocol):

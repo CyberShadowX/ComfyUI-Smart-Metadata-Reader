@@ -1,6 +1,8 @@
 import json
 import importlib.util
+import subprocess
 import sys
+import textwrap
 from types import SimpleNamespace
 
 import pytest
@@ -182,6 +184,49 @@ def test_plugin_root_init_exports_comfyui_mappings():
 
     assert "SmartMetadataReader" in module.NODE_CLASS_MAPPINGS
     assert module.NODE_DISPLAY_NAME_MAPPINGS["SmartMetadataReader"] == "Smart Metadata Reader"
+
+
+def test_plugin_package_import_works_without_repo_root_on_sys_path(tmp_path):
+    root_dir = pytest.importorskip("pathlib").Path(__file__).resolve().parents[1]
+    script = textwrap.dedent(
+        f"""
+        import importlib.util
+        import pathlib
+        import sys
+
+        root = pathlib.Path({str(root_dir)!r})
+        sys.path = [
+            path for path in sys.path
+            if pathlib.Path(path or ".").resolve() != root
+        ]
+        for name in list(sys.modules):
+            if name == "smart_metadata_reader" or name.startswith("smart_metadata_reader."):
+                sys.modules.pop(name, None)
+
+        spec = importlib.util.spec_from_file_location(
+            "comfyui_custom_node_under_test",
+            root / "__init__.py",
+            submodule_search_locations=[str(root)],
+        )
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        assert "SmartMetadataReader" in module.NODE_CLASS_MAPPINGS
+        assert module.NODE_DISPLAY_NAME_MAPPINGS["SmartMetadataReader"] == "Smart Metadata Reader"
+        print("package import ok")
+        """
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "package import ok" in completed.stdout
 
 
 def test_input_types_prefers_comfyui_filename_list(monkeypatch):

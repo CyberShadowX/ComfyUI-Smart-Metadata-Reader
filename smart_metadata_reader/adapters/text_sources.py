@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from smart_metadata_reader.adapters.base import TextResolutionContext
-from smart_metadata_reader.models import NodeRecord, PromptSegment
+from .base import TextResolutionContext
+from ..models import NodeRecord, PromptSegment
 
 
 COMMON_TEXT_FIELDS = (

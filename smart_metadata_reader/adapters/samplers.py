@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from smart_metadata_reader.models import NodeRecord
+from ..models import NodeRecord
 
 
 SAMPLER_CLASS_TYPES = {
