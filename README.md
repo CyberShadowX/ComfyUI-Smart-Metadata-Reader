@@ -45,6 +45,13 @@ pip install -r requirements.txt
 2. 从 ComfyUI `input` 目录选择图片，或通过图片控件上传图片。
 3. 使用节点输出连接后续节点，或直接查看输出文本。
 
+## 节点参数说明
+
+- `parameter_index`：用于 A1111 / Forge 多组参数 fallback 时选择第几组参数。普通使用保持 `0`。
+- `prefer_cached_text`：优先使用 `ShowText` 等节点保存的缓存结果，避免把 Gemini / OpenAI 的 `system_instruction`、`prompt template` 当成最终提示词。普通使用保持 `true`。
+- `include_raw_json`：是否在内部解析结果中保留原始 `prompt` / `workflow` JSON。普通使用保持 `true`。
+- `max_depth`：graph 反向追踪最大深度，用于防止循环。普通使用保持 `40`；极复杂工作流可以适当加大。
+
 ## 输出端口
 
 主节点输出：
@@ -123,6 +130,8 @@ Phase 1 初始支持包括：
 python -m pytest -q
 python -m compileall .
 ```
+
+`tests/` 目录是开发和回归测试用的。普通 ComfyUI 用户不需要手动运行这些测试；仓库保留它们是为了在后续兼容更多 custom nodes 时，防止破坏已有功能。
 
 ## 手动 ComfyUI 验证
 

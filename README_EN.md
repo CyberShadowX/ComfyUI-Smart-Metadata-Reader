@@ -45,6 +45,13 @@ Restart ComfyUI after installing.
 2. Select an image from the ComfyUI `input` directory, or upload one through the image widget.
 3. Use the node outputs in your workflow, or inspect the text outputs directly.
 
+## Node Options
+
+- `parameter_index`: Selects which parameter block to use when falling back to multi-parameter A1111 / Forge metadata. Keep this at `0` for normal use.
+- `prefer_cached_text`: Prefer cached outputs from nodes such as `ShowText`, which helps avoid treating Gemini / OpenAI `system_instruction` or prompt templates as final prompts. Keep this `true` for normal use.
+- `include_raw_json`: Keeps the original `prompt` / `workflow` JSON in the internal parse result. Keep this `true` for normal use.
+- `max_depth`: Maximum reverse graph traversal depth, used to prevent cycles. Keep this at `40` for normal use; increase it only for very complex workflows.
+
 ## Outputs
 
 The main node outputs:
@@ -123,6 +130,8 @@ Run these from the plugin directory:
 python -m pytest -q
 python -m compileall .
 ```
+
+The `tests/` directory is for development and regression testing. Regular ComfyUI users do not need to run it manually; it is kept in the repository to prevent future custom node compatibility work from breaking existing behavior.
 
 ## Manual ComfyUI Verification
 
