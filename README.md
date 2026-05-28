@@ -115,12 +115,30 @@ Phase 1 初始支持包括：
 - LoRA loader 的文件名和强度会单独进入 setting；但 LoRA trigger words 如果通过文本节点进入 prompt，就会保留在 positive / negative 中。
 - 不做内容审查，不做提示词优化，不删 token。
 
+## 已验证场景
+
+Phase 1 实机和回归测试已覆盖：
+
+- 普通 ComfyUI `prompt` / `workflow` metadata。
+- Comfyroll `CR Apply ControlNet` positive conditioning passthrough。
+- `ShowText|pysssss` 缓存文本。
+- `StringFunction|pysssss` prompt 拼接。
+- `DeepTranslatorTextNode` 文本来源。
+- A1111 / Forge `parameters` fallback。
+- PNG / JPEG / WEBP metadata 读取。
+
 ## 当前限制
 
 - Phase 1 是 Python-only。节点内部三个大文本框和更像 SD Prompt Reader 的图片预览 UI 留到 Phase 2 JS 前端增强。
 - 部分未知 custom conditioning 节点会返回 `PARTIAL` / unresolved，而不是猜测 prompt。
 - 某些 custom node 的运行结果如果没有写入 metadata 缓存，可能无法还原。
 - 被压缩或重新保存后丢失 metadata 的图片无法读取原始生成参数。
+
+## 后续计划
+
+- Phase 2：JS frontend enhancement，在节点内部显示 `positive` / `negative` / `setting` 三个文本框。
+- Phase 3：更多 sampler adapter，例如 Efficient / Impact / custom sampler，基于真实失败样本补充。
+- Phase 4：更多 metadata format compatibility。
 
 ## 本地验证
 

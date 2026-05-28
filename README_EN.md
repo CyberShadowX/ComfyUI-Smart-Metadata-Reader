@@ -115,12 +115,30 @@ Initial Phase 1 support includes:
 - LoRA loader file names and strengths are extracted separately for settings; LoRA trigger words remain in the prompt if they entered the text chain.
 - The parser does not perform content moderation, prompt optimization, or token deletion.
 
+## Verified Scenarios
+
+Phase 1 real-world validation and regression tests cover:
+
+- Regular ComfyUI `prompt` / `workflow` metadata.
+- Comfyroll `CR Apply ControlNet` positive conditioning passthrough.
+- `ShowText|pysssss` cached text.
+- `StringFunction|pysssss` prompt concatenation.
+- `DeepTranslatorTextNode` text source.
+- A1111 / Forge `parameters` fallback.
+- PNG / JPEG / WEBP metadata reading.
+
 ## Current Limitations
 
 - Phase 1 is Python-only. In-node large text boxes and a richer SD Prompt Reader style preview UI are planned for the Phase 2 JavaScript enhancement.
 - Some unknown custom conditioning nodes may return `PARTIAL` / unresolved instead of guessing.
 - If a custom node did not save its generated result into metadata cache, the parser may not be able to recover it.
 - Images with stripped metadata cannot provide original generation settings.
+
+## Roadmap
+
+- Phase 2: JS frontend enhancement to show `positive` / `negative` / `setting` text boxes inside the node.
+- Phase 3: More sampler adapters, such as Efficient / Impact / custom samplers, added from real failure samples.
+- Phase 4: More metadata format compatibility.
 
 ## Local Verification
 
